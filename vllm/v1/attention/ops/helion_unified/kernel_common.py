@@ -77,7 +77,6 @@ def _baseline_partials(
     max_pages: int = 0,
     m_budget: int = 0,
     p_budget: int = 0,
-    rows_bucket: int = 0,
 ) -> tuple[Tensor, Tensor, Tensor]:
     """
     flash_attn as a ONE-SPLIT partial set, in phase 1's flat layout.
@@ -98,7 +97,7 @@ def _baseline_partials(
     a baseline and would NOT be in the kernel's host path (that is exactly why
     `unified_factory` uses the shape-derived bound instead).
     """
-    del grid_extent, max_pages, m_budget, p_budget, rows_bucket
+    del grid_extent, max_pages, m_budget, p_budget
     from flash_attn_3.flash_attn_interface import flash_attn_with_kvcache
 
     max_seqlen_q = int((query_start_loc[1:] - query_start_loc[:-1]).max())
@@ -206,15 +205,14 @@ def unified_factory(kernel_fn, combine_fn, grid_flat: bool):
            - `block_table.size(0) == 1` -> repeat seqused_k / block_table / query_start_loc
            - `query.size(0) == 1`       -> pad query, because query is varlen-packed so the
              0/1-specialized dim is num_tokens, NOT num_seqs (`kernel_prefill.py:274-275`)
-      4. `rows_bucket = min(256, 1 << (rows - 1).bit_length())`.
-      5. grid_extent: `max_seqlen_q` if not `grid_flat` else
+      4. grid_extent: `max_seqlen_q` if not `grid_flat` else
          `query.size(0) // _Q_BLOCK_MIN + rows` (computed AFTER the padding in step 3, so both
          terms describe the tensors actually passed).
          NOTE: max_seqlen_q must be max(query_lens), NOT capture_max_query_len -- the latter
          inflated launched q-tiles 2.97x over 86 fullcg entries (16x worst case), invisible in
          correctness because q_load_mask discards the surplus.
-      6. call phase 1, then phase 2 into `out` (allocating `out` if None).
-      7. un-pad and return.
+      5. call phase 1, then phase 2 into `out` (allocating `out` if None).
+      6. un-pad and return.
 
     `grid_flat` is an explicit PARAMETER, not a module global. It must agree with which
     body `kernel_fn` is -- the grid extent means `max_seqlen_q` for
@@ -282,7 +280,6 @@ def unified_factory(kernel_fn, combine_fn, grid_flat: bool):
         # `rows`, not `num_tokens`: the key must describe the grid the kernel is
         # launched with (`kernel_tune.py:257-262`).
         rows = block_table.size(0)
-        rows_bucket = min(256, 1 << (rows - 1).bit_length())
 
         # `q_block`'s registered max, computed HERE and passed as an `hl.constexpr`
         # rather than written inline in the kernel body (INVARIANT 14). The M extent is
@@ -374,7 +371,6 @@ def unified_factory(kernel_fn, combine_fn, grid_flat: bool):
             block_table.size(1),
             m_budget,
             p_budget,
-            rows_bucket,
         )
         if out is None:
             out = torch.empty(

@@ -41,7 +41,6 @@ def _kernel_unified_flat(
     max_pages: hl.constexpr,  # block_table.size(1): static gather clamp + KV len in the key
     m_budget: hl.constexpr,  # `q_block`'s registered max: max(_M_BUDGET_FLOOR, 128 // num_groups)
     p_budget: hl.constexpr,  # `block_p`'s registered max: 512 // page_size, floored at 2
-    rows_bucket: hl.constexpr = 0,  # specialization fork on batch width; UNUSED in body
 ) -> tuple[Tensor, Tensor, Tensor]:
     """
     Returns (partial_out, partial_l, partial_m). Does NOT take `out=`.
@@ -66,9 +65,6 @@ def _kernel_unified_flat(
       - `max_pages` puts KV length in the key AND is the static clamp bound for the gather.
         Must be static: a data-dependent TMA extent faults and poisons the whole CUDA process
         (`paged_attention/kernel_tune.py:143-145`).
-      - `rows_bucket` = min(256, 1 << (rows-1).bit_length()), unused in the body, forks the
-        tuned config on batch width; without it nseq=1 and nseq=256 share one split count
-        (`kernel_tune.py:56-64`).
     num_q_heads / head_dim / page_size / num_kv_heads come from `hl.specialize` on the
     tensor shapes in the body -- model constants, not call-site variables.
 
@@ -113,10 +109,7 @@ def _kernel_unified_flat(
     # 1)`, a GuardOnDataDependentSymNode -- and `hl.constexpr` is no escape either,
     # because Helion requires grid loops at a function's TOP LEVEL (NestedGridLoop), so
     # no `if` can wrap one. Hence two separate kernel functions sharing this prologue
-    # and `_attend_tile`, selected host-side in `unified_factory`. `rows_bucket` is
-    # likewise never referenced -- it is a specialization key only
-    # (`kernel_tune.py:56-64`), and `del` is not supported in a kernel body either
-    # (ast.Delete).
+    # and `_attend_tile`, selected host-side in `unified_factory`.
     num_tokens, num_q_heads, head_dim = query.size()
     num_q_heads = hl.specialize(num_q_heads)
     head_dim = hl.specialize(head_dim)
