@@ -30,6 +30,7 @@ from typing import ClassVar
 import torch
 
 from vllm.config import VllmConfig
+from vllm.logger import init_logger
 from vllm.v1.attention.backend import (
     AttentionBackend,
     AttentionCGSupport,
@@ -50,6 +51,8 @@ from vllm.v1.attention.ops.triton_reshape_and_cache_flash import (
     triton_reshape_and_cache_flash,
 )
 from vllm.v1.kv_cache_interface import AttentionSpec, KVCacheLayout
+
+logger = init_logger(__name__)
 
 
 def _selected_impl() -> str:
@@ -117,6 +120,10 @@ class HelionAttentionMetadataBuilder(AttentionMetadataBuilder[HelionAttentionMet
     ) -> None:
         super().__init__(kv_cache_spec, layer_names, vllm_config, device)
         self.impl_name = _selected_impl()
+
+        logger.info_once(
+            f"Using HelionAttention version {self.impl_name}",
+        )
 
     def build(
         self,
