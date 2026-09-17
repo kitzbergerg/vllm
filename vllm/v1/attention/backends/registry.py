@@ -119,7 +119,7 @@ class AttentionBackendEnum(Enum, metaclass=_AttentionBackendEnumMeta):
     HPC_ATTN = "vllm.v1.attention.backends.hpc_attn.HpcAttentionBackend"
     # Unified Helion paged attention: one kernel for decode, prefill and mixed
     # batches. Select the implementation with VLLM_HELION_UNIFIED_IMPL
-    # (flat|grid|ref, default flat). Requires the `helion` extra.
+    # (flat|grid, default flat). Requires the `helion` extra.
     HELION_UNIFIED_ATTN = (
         "vllm.v1.attention.backends.helion_unified_attn.HelionUnifiedAttentionBackend"
     )

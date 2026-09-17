@@ -56,10 +56,6 @@ include = ["vllm*"]
 
 [tool.ruff.lint.per-file-ignores]
 "vllm/third_party/**" = ["ALL"]
-# Helion kernels: the docstrings carry numbered invariant lists and argument
-# tables whose alignment is load-bearing, and `m`/`l` are FlashAttention's own
-# names for the running softmax max and denominator.
-"vllm/v1/attention/ops/helion_unified/*.py" = ["E501", "E741"]
 "vllm/version.py" = ["F401"]
 "vllm/_version.py" = ["ALL"]
 
