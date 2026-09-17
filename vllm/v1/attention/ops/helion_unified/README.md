@@ -18,12 +18,11 @@ The backend that drives these lives at
 ## Use
 
 ```bash
-vllm serve <model> --attention-backend HELION_UNIFIED_ATTN
-VLLM_HELION_UNIFIED_IMPL=grid vllm serve <model> \
-    --attention-backend HELION_UNIFIED_ATTN
+vllm serve <model> --attention-backend HELION_FLAT_ATTN
+vllm serve <model> --attention-backend HELION_GRID_ATTN
 ```
 
-Or offline: `LLM(model=..., attention_backend="HELION_UNIFIED_ATTN")`.
+Or offline: `LLM(model=..., attention_backend="HELION_FLAT_ATTN")`.
 
 Requires the `helion` extra (`helion==1.4.0`, `setup.py:1538`). The registry stores only a
 dotted path, so the import is lazy: without Helion installed vLLM still starts, and only

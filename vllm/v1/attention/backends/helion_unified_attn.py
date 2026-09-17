@@ -1,28 +1,25 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
-"""Unified Helion paged-attention backend.
+"""Unified Helion paged-attention backends.
 
-One backend serving decode rows, prefill rows and mixed batches through a single
-kernel launch, with no dispatch on query length. Two kernel grid forms are
-reachable through it, selected by `VLLM_HELION_UNIFIED_IMPL` in {flat, grid};
-`flat` is the default. See `vllm/v1/attention/ops/helion_unified/__init__.py`.
+One kernel serving decode rows, prefill rows and mixed batches through a single
+launch, with no dispatch on query length. The two grid forms are registered
+separately. See `vllm/v1/attention/ops/helion_unified/__init__.py`.
 
 Usage:
-    vllm serve <model> --attention-backend HELION_UNIFIED_ATTN
-    VLLM_HELION_UNIFIED_IMPL=grid vllm serve <model> \
-        --attention-backend HELION_UNIFIED_ATTN
+    vllm serve <model> --attention-backend HELION_FLAT_ATTN
+    vllm serve <model> --attention-backend HELION_GRID_ATTN
 """
 
 from __future__ import annotations
 
-import os
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import ClassVar
 
 import torch
 
 from vllm.config import VllmConfig
-from vllm.logger import init_logger
 from vllm.v1.attention.backend import (
     AttentionBackend,
     AttentionCGSupport,
@@ -33,25 +30,11 @@ from vllm.v1.attention.backend import (
     CommonAttentionMetadata,
 )
 from vllm.v1.attention.backends.registry import AttentionBackendEnum
-from vllm.v1.attention.ops.helion_unified import (
-    DEFAULT_IMPL,
-    IMPL_ENV,
-    IMPLS,
-    get_impl,
-)
+from vllm.v1.attention.ops.helion_unified import build_flat, build_grid
 from vllm.v1.attention.ops.triton_reshape_and_cache_flash import (
     triton_reshape_and_cache_flash,
 )
 from vllm.v1.kv_cache_interface import AttentionSpec, KVCacheLayout
-
-logger = init_logger(__name__)
-
-
-def _selected_impl() -> str:
-    name = (os.environ.get(IMPL_ENV) or DEFAULT_IMPL).strip().lower()
-    if name not in IMPLS:
-        raise ValueError(f"{IMPL_ENV}={name!r} not in {IMPLS}")
-    return name
 
 
 @dataclass
@@ -79,8 +62,6 @@ class HelionAttentionMetadataBuilder(AttentionMetadataBuilder[HelionAttentionMet
         device: torch.device,
     ) -> None:
         super().__init__(kv_cache_spec, layer_names, vllm_config, device)
-        self.impl_name = _selected_impl()
-        logger.info_once(f"Using HelionAttention version {self.impl_name}")
 
     def build(
         self,
@@ -107,6 +88,8 @@ class HelionAttentionMetadataBuilder(AttentionMetadataBuilder[HelionAttentionMet
 
 
 class HelionAttentionImpl(AttentionImpl):
+    build_kernel: ClassVar[Callable[[], Callable[..., torch.Tensor]]]
+
     def __init__(
         self,
         num_heads: int,
@@ -143,8 +126,7 @@ class HelionAttentionImpl(AttentionImpl):
         self.kv_cache_dtype = kv_cache_dtype
         self.attn_type = attn_type
         self.kv_sharing_target_layer_name = kv_sharing_target_layer_name
-        self.impl_name = _selected_impl()
-        self.kernel = get_impl(self.impl_name)
+        self.kernel = type(self).build_kernel()
 
     def do_kv_cache_update(
         self,
@@ -216,19 +198,19 @@ class HelionAttentionImpl(AttentionImpl):
         return output
 
 
-class HelionUnifiedAttentionBackend(AttentionBackend):
+class HelionFlatAttentionImpl(HelionAttentionImpl):
+    build_kernel = staticmethod(build_flat)
+
+
+class HelionGridAttentionImpl(HelionAttentionImpl):
+    build_kernel = staticmethod(build_grid)
+
+
+class HelionAttentionBackend(AttentionBackend):
     forward_includes_kv_cache_update: bool = False
     supported_dtypes: ClassVar[list[torch.dtype]] = [torch.float16, torch.bfloat16]
     # No descale path in the kernel, so no quantized KV.
     supported_kv_cache_dtypes: ClassVar[list[str]] = ["auto"]
-
-    @staticmethod
-    def get_name() -> str:
-        return AttentionBackendEnum.HELION_UNIFIED_ATTN.name
-
-    @staticmethod
-    def get_impl_cls() -> type[HelionAttentionImpl]:
-        return HelionAttentionImpl
 
     @staticmethod
     def get_builder_cls() -> type[HelionAttentionMetadataBuilder]:
@@ -276,3 +258,23 @@ class HelionUnifiedAttentionBackend(AttentionBackend):
     @classmethod
     def customize_spec(cls, spec: AttentionSpec) -> AttentionSpec:
         return spec
+
+
+class HelionFlatAttentionBackend(HelionAttentionBackend):
+    @staticmethod
+    def get_name() -> str:
+        return AttentionBackendEnum.HELION_FLAT_ATTN.name
+
+    @staticmethod
+    def get_impl_cls() -> type[HelionAttentionImpl]:
+        return HelionFlatAttentionImpl
+
+
+class HelionGridAttentionBackend(HelionAttentionBackend):
+    @staticmethod
+    def get_name() -> str:
+        return AttentionBackendEnum.HELION_GRID_ATTN.name
+
+    @staticmethod
+    def get_impl_cls() -> type[HelionAttentionImpl]:
+        return HelionGridAttentionImpl

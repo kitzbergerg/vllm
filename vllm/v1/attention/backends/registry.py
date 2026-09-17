@@ -117,11 +117,12 @@ class AttentionBackendEnum(Enum, metaclass=_AttentionBackendEnumMeta):
     # currently limited to the Hy3 model,
     # and requires a block size of 64.
     HPC_ATTN = "vllm.v1.attention.backends.hpc_attn.HpcAttentionBackend"
-    # Unified Helion paged attention: one kernel for decode, prefill and mixed
-    # batches. Select the implementation with VLLM_HELION_UNIFIED_IMPL
-    # (flat|grid, default flat). Requires the `helion` extra.
-    HELION_UNIFIED_ATTN = (
-        "vllm.v1.attention.backends.helion_unified_attn.HelionUnifiedAttentionBackend"
+    # Unified Helion paged attention. Requires the `helion` extra.
+    HELION_FLAT_ATTN = (
+        "vllm.v1.attention.backends.helion_unified_attn.HelionFlatAttentionBackend"
+    )
+    HELION_GRID_ATTN = (
+        "vllm.v1.attention.backends.helion_unified_attn.HelionGridAttentionBackend"
     )
     ROCM_AITER_UNIFIED_ATTN = (
         "vllm.v1.attention.backends.rocm_aiter_unified_attn."
